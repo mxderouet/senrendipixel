@@ -1,0 +1,14 @@
+/* styles.css */
+body {
+    text-align: center;
+}
+
+#pixelCanvas {
+    display: block;
+    margin: 0 auto;
+}
+
+#generateButton, #increaseSize, #decreaseSize, #increasePixels, #decreasePixels, #loopCheckbox, #fasterButton, #slowerButton, #gridButton {
+    display: block;
+    margin: 10px auto;
+}
