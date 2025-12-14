@@ -1,6 +1,9 @@
 // script.js
+// Canvas setup
 const canvas = document.getElementById('pixelCanvas');
 const ctx = canvas.getContext('2d');
+
+// UI elements
 const generateButton = document.getElementById('generateButton');
 const colorCheckbox = document.getElementById('colorCheckbox');
 const increaseSizeButton = document.getElementById('increaseSize');
@@ -12,144 +15,117 @@ const pixelCountDisplay = document.getElementById('pixelCount');
 const loopCheckbox = document.getElementById('loopCheckbox');
 const fasterButton = document.getElementById('fasterButton');
 const slowerButton = document.getElementById('slowerButton');
-const gridCheckbox = document.getElementById('gridCheckbox'); // Add the grid checkbox
+const gridCheckbox = document.getElementById('gridCheckbox');
 const saveButton = document.getElementById('saveButton');
+const paletteSelect = document.getElementById('paletteSelect');
+
+// State
 let pixelSize = 3;
 let pixelCount = 500;
-let loopInterval = 1000; // 1 second interval
-let loopIntervalId;
-let isGridEnabled = false; // Variable to toggle grid generation
+let loopInterval = 1000;
+let loopId = null;
+let isGridEnabled = false;
+let occupied = new Set();
+let currentPalette = 'random';
 
-increaseSizeButton.addEventListener('click', () => changePixelSize(1));
-decreaseSizeButton.addEventListener('click', () => changePixelSize(-1));
+// Color palettes
+const palettes = {
+  vaporwave: ['#ff71ce','#01cdfe','#05ffa1','#b967ff','#fffb96'],
+  cyberpunk: ['#00ffff','#ff00ff','#ffff00','#111111','#ff3333'],
+  pastel: ['#ffd1dc','#c1e1c1','#fdfd96','#cfcfc4'],
+  monochrome: ['#000000','#222222','#444444','#666666','#888888']
+};
 
-increasePixelsButton.addEventListener('click', () => {
-    changePixelCount(10);
-    generatePixels();
-});
+// Events
+generateButton.onclick = generatePixels;
+increaseSizeButton.onclick = () => changePixelSize(1);
+decreaseSizeButton.onclick = () => changePixelSize(-1);
+increasePixelsButton.onclick = () => changePixelCount(10);
+decreasePixelsButton.onclick = () => changePixelCount(-10);
+loopCheckbox.onchange = () => loopCheckbox.checked ? startLoop() : stopLoop();
+fasterButton.onclick = () => changeLoopInterval(-100);
+slowerButton.onclick = () => changeLoopInterval(100);
+gridCheckbox.onchange = () => { isGridEnabled = gridCheckbox.checked; generatePixels(); };
+saveButton.onclick = saveImage;
+paletteSelect.onchange = e => {
+  currentPalette = e.target.value;
+  generatePixels();
+};
 
-decreasePixelsButton.addEventListener('click', () => {
-    changePixelCount(-10);
-    generatePixels();
-});
-generateButton.addEventListener('click', generatePixels);
-loopCheckbox.addEventListener('change', toggleLoop);
-fasterButton.addEventListener('click', () => changeLoopInterval(-100));
-slowerButton.addEventListener('click', () => changeLoopInterval(100));
-gridCheckbox.addEventListener('change', toggleGrid); // Listen for changes to the "Grid" checkbox
-
-// Add a click event listener to the "Save" button
-saveButton.addEventListener('click', () => {
-    const canvas = document.getElementById('pixelCanvas');
-    const dataURL = canvas.toDataURL('image/png');
-
-    // Create an anchor element to trigger the download
-    const link = document.createElement('a');
-    link.href = dataURL;
-    link.download = 'canvas_image.png';
-    link.click();
-});
-
-function changePixelSize(change) {
-    pixelSize += change;
-    if (pixelSize < 1) {
-        pixelSize = 1;
-    }
-    generatePixels();
-}
-
-function changePixelCount(change) {
-    pixelCount += change;
-    if (pixelCount < 1) {
-        pixelCount = 1;
-    }
-
-    if (isGridEnabled) {
-        const maxGridPixels = Math.floor((canvas.width / pixelSize) * (canvas.height / pixelSize));
-        pixelCount = Math.min(pixelCount, maxGridPixels);
-    } else {
-        const maxPixels = Math.floor((canvas.width * canvas.height) / (pixelSize * pixelSize));
-        pixelCount = Math.min(pixelCount, maxPixels);
-    }
-
-    pixelCountDisplay.textContent = pixelCount + " Pixels";
-}
-
+// Core functions
 function generatePixels() {
-    // Clear the canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  occupied.clear();
 
-    const maxPixels = isGridEnabled
-      ? Math.floor((canvas.width / pixelSize) * (canvas.height / pixelSize))
-      : Math.floor((canvas.width * canvas.height) / (pixelSize * pixelSize));
+  const cols = Math.floor(canvas.width / pixelSize);
+  const rows = Math.floor(canvas.height / pixelSize);
+  const maxPixels = cols * rows;
 
-    // Generate pixels in a grid or randomly, but not exceeding the updated pixelCount
-    for (let i = 0; i < Math.min(pixelCount, maxPixels); i++) {
-        const x = isGridEnabled ? (i * pixelSize) % canvas.width : Math.random() * canvas.width;
-        const y = isGridEnabled ? Math.floor((i * pixelSize) / canvas.width) * pixelSize : Math.random() * canvas.height;
+  for (let i = 0; i < Math.min(pixelCount, maxPixels); i++) {
+    let gx, gy, key;
+    let attempts = 0;
 
-        const color = colorCheckbox.checked ? getRandomColor() : 'black';
+    do {
+      if (isGridEnabled) {
+        gx = i % cols;
+        gy = Math.floor(i / cols);
+      } else {
+        gx = Math.floor(Math.random() * cols);
+        gy = Math.floor(Math.random() * rows);
+      }
+      key = `${gx},${gy}`;
+      attempts++;
+    } while (!allowOverlappingCheckbox.checked && occupied.has(key) && attempts < 10);
 
-        ctx.fillStyle = color;
+    occupied.add(key);
+    ctx.fillStyle = colorCheckbox.checked ? randomColor() : '#000';
+    ctx.fillRect(gx * pixelSize, gy * pixelSize, pixelSize, pixelSize);
+  }
 
-        if (allowOverlappingCheckbox.checked || !isPixelOccupied(x, y)) {
-            ctx.fillRect(x, y, pixelSize, pixelSize);
-        }
-    }
+  pixelCountDisplay.textContent = pixelCount + ' Pixels';
 }
 
-function getRandomColor() {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
+function randomColor() {
+  if (currentPalette === 'random') {
+    return '#' + Math.floor(Math.random() * 16777215)
+      .toString(16)
+      .padStart(6, '0');
+  }
+  const palette = palettes[currentPalette];
+  return palette[Math.floor(Math.random() * palette.length)];
 }
 
-function isPixelOccupied(x, y) {
-    const imageData = ctx.getImageData(x, y, pixelSize, pixelSize).data;
-    for (let i = 0; i < imageData.length; i++) {
-        if (imageData[i] !== 0) {
-            return true;
-        }
-    }
-    return false;
+function changePixelSize(delta) {
+  pixelSize = Math.max(1, pixelSize + delta);
+  generatePixels();
 }
 
-function toggleLoop() {
-    if (loopCheckbox.checked) {
-        startLoop();
-    } else {
-        stopLoop();
-    }
+function changePixelCount(delta) {
+  pixelCount = Math.max(1, pixelCount + delta);
+  generatePixels();
 }
 
 function startLoop() {
-    if (loopIntervalId) {
-        clearInterval(loopIntervalId);
-    }
-    loopInterval = Math.max(loopInterval, 100); // Ensure a minimum interval of 100ms
-    loopInterval = Math.min(loopInterval, 5000); // Limit to a maximum interval of 5 seconds
-    loopIntervalId = setInterval(generatePixels, loopInterval);
+  stopLoop();
+  loopId = setInterval(generatePixels, loopInterval);
 }
 
 function stopLoop() {
-    clearInterval(loopIntervalId);
-    loopIntervalId = null;
+  clearInterval(loopId);
+  loopId = null;
 }
 
-function changeLoopInterval(change) {
-    loopInterval += change;
-    loopInterval = Math.max(loopInterval, 100); // Ensure a minimum interval of 100ms
-    loopInterval = Math.min(loopInterval, 5000); // Limit to a maximum interval of 5 seconds
-    if (loopCheckbox.checked && loopIntervalId) {
-        clearInterval(loopIntervalId);
-        loopIntervalId = setInterval(generatePixels, loopInterval);
-    }
+function changeLoopInterval(delta) {
+  loopInterval = Math.min(5000, Math.max(100, loopInterval + delta));
+  if (loopCheckbox.checked) startLoop();
 }
 
-function toggleGrid() {
-    isGridEnabled = gridCheckbox.checked;
-    generatePixels();
+function saveImage() {
+  const link = document.createElement('a');
+  link.download = 'pixels.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
+
+// Initial render
+generatePixels();
